@@ -1,0 +1,11 @@
+square
+triangle
+circle
+ellipse
+polygon
+dot
+area
+pentagon
+lozenge
+rectangle
+hexagon
