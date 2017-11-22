@@ -1,4 +1,10 @@
 dentelles
 crenellations
-zigzag
-fuzzy
+zigzags
+fuzz
+fur
+curlicues
+curls
+fringes
+scallopes
+triangles

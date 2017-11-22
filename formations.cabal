@@ -25,7 +25,7 @@ executable formations
                      , random
                      , monad-loops
                      , blaze-markup
-                     , textgen >= 0.5.3
+                     , textgen >= 0.5.4
 
 source-repository head
   type:     git
