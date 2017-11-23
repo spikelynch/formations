@@ -58,8 +58,6 @@ c v s = choose $ v s
 al :: [ TextGenCh ] -> TextGenCh
 al = aan . list
 
-sentence :: [ [ Char ] ] -> String
-sentence = upcase . smartjoin
 
 -- for the TextGen library:
 -- take a [ TextGenCh ] list some of which will be empty,
@@ -73,27 +71,18 @@ sentence = upcase . smartjoin
 -- depends Nothing  = tgempty
 
 
--- Formations
-
--- field
-
--- field :: Vocab -> [ TextGenCh ] -> TextGenCh
--- field v (c1:c2:c3:[]) = al [ basefield v c1, pattern v c2, border v c3 ] ]
--- field v (a:b:[])   = al [ basefield v c1, choose [ pattern v c2, border v c2 ] ]
--- field v (a:[])     = aan $ basefield v c1
--- field _ _          = tgempty
 
 
 
 field :: Vocab -> TextGenCh
 field v = choose [ f1, f2, f3 ]
-  where f1 = aan $ region v (c v "colour")
+  where f1 = region v (c v "colour")
         f2 = do
           ( c1, c2 ) <- choose $ v "colour"
-          aan $ list [ region v c1, choose [ pattern v c2, border v c2 ] ]
+          list [ region v c1, choose [ pattern v c2, border v c2 ] ]
         f3 = do
           ( c1, c2, c3 ) <- choose $ v "colour"
-          aan $ list [ region v c1, pattern v c2, word "and", border v c3 ]
+          list [ region v c1, pattern v c2, word "and", border v c3 ]
 
 region :: Vocab -> TextGenCh -> TextGenCh
 region v colour = list [ colour, c v "region" ]
@@ -104,41 +93,99 @@ pattern v colour = list [ c v "patterned", colour, c v "pattern" ]
 border :: Vocab -> TextGenCh -> TextGenCh
 border v colour = list [ c v "bordered", colour, c v "border" ]
 
-object1 v = do
-  shape <- choose $ v "shape"
-  basec <- choose $ v "colour"
-  short <- return $ list [ word "a", basec, shape ]
-  long <- return $ list [ word "a complicated", shape, word "of the colour", basec ]
-  ( short, long )
-
 -- this returns a complete description of an object (the first gen)
 -- and a second gen which randomly makes shorter versions
 --
 -- ( "A blue cube decorated with red stripes",
 --   choose [ "The blue cube", "The cube", "the blue cube with red stripes" ]
 
--- object :: Vocab -> TextGen StdGen ( TextGenCh, TextGenCh )
--- object v = do
---   shape <- choose $ v "shape"
---   ( mainc, secondc ) <- choose $ v "colour"
---   p <- return $ pattern v secondc
---   ( aan $ list [ mainc, shape, p ], list [ word "the", shape ] )
-  -- primary <- return $ aan $ list [ mainc, shape, p ]
-  -- others <- return $ weighted [
-  --   ( 10, list [ word "the", mainc, shape, p ] ),
-  --   ( 30, list [ word "the", shape ] ),
-  --   ( 20, list [ word "the", mainc, shape ] )
-  --   ]
-  -- ( primary, others )
+object :: Vocab -> TextGen StdGen ( TextGenCh, TextGenCh )
+object v = do
+  shape <- choose $ v "shape2d"
+  pat <- choose $ v "pattern"
+  ( shapec, patc ) <- choose $ v "colour"
+  patwith <- return $ list [ c v "patterned", patc, pat ]
+  primary <- return $ aan $ list [ shapec, shape, patwith  ]
+  others <- return $ weighted [
+    ( 30, shape ),
+    ( 20, list [ shapec, shape ] ),
+    ( 10, list [ shapec, shape, patwith ] )
+    ]
+  return ( primary, others )
 
 
+-- things which objects can do
+-- intransitive
+--     appear
+--     disappear
+--     move
+--     transform into other objects
+--     multiply
+
+-- transitive (to other objects, or fields)
+--     consume
+--     merge with
+--     disappear into
+--     obliterate or hide
+--     conceal themselves within
+
+-- an event is
+-- one or several objects, and a field
+-- a series of acts between random combos of the objects
+--
+-- each act is a function from the objects to the new objects
+-- not removing them for now
+
+-- need a combinator to generate a random number of things
+
+
+the g = list [ word "the", g ]
+
+
+objects :: Vocab -> TextGen StdGen [ ( TextGenCh, TextGenCh ) ]
+objects v = do
+  o1 <- object v
+  o2 <- object v
+  o3 <- object v
+  return [ o1, o2, o3 ] 
+
+act :: Vocab -> [ ( TextGenCh, TextGenCh ) ] -> TextGenCh  
+act v os = choose [ act_trans v ps, act_intrans v ps ]
+  where ps = map ( \( _, p ) -> p ) os
+
+act_trans :: Vocab -> [ TextGenCh ] -> TextGenCh
+act_trans v os = do
+  ( o1, o2 ) <- choose os
+  v <- choose $ v "verbtrans"
+  list [ the o1, v, the o2 ]
+
+-- todo - active/passive
+
+act_intrans :: Vocab -> [ TextGenCh ] -> TextGenCh
+act_intrans v os = do
+  o <- choose os
+  v <- choose $ v "verbintrans"
+  list [ the o, v ]
 
 
 formation :: Vocab -> TextGenCh
 formation v = do
-  ( short, long ) <- object1 v
-  -- ( complete, abbrev ) <- object v
-  list [ short, long ]
+  os <- objects v
+  a <- return $ sentence $ act v os
+  list [ a, a, a, a, a ]
+
+-- take the output of a generator and sentence-format it
+
+sentence :: TextGenCh -> TextGenCh
+sentence g = postgen (\ws -> [ upcase $ smartjoin ws ]) g
+
+-- take the output of a generator and add a newline
+                     
+para :: TextGenCh -> TextGenCh
+para g = postgen (++ [ "\n" ]) g
+
+
+
 
 
 
@@ -160,7 +207,7 @@ main = do
   v <- loadVocab (getDir args)
   lines <- replicateM 10 $ do
     output <- getStdRandom $ runTextGen $ formation v
-    return $ sentence output
-  putStrLn $ intercalate "\n" lines
+    return output
+  putStrLn $ intercalate "\n" $ concat lines
 
 
