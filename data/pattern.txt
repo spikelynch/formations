@@ -1,0 +1,13 @@
+checkerboard
+polka-dots
+houndstooth
+swirls
+ripples
+moire
+stripes
+pinstripes
+grid
+squares
+diamonds
+lozenges
+woodgrain
