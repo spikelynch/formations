@@ -1,15 +1,14 @@
-consumed
-obscured
-divided
-collided with
-passed over
-passed under
-devoured
-outgrew
-overreached
-outshone
-moistened
-grappled with
-fought
-struggled with
-engulfed
+consumes
+obscures
+divides
+collides with
+passes over
+passes under
+devours
+outgrows
+outshines
+moistens
+grapples with
+fights against
+struggles with
+engulfs

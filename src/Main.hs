@@ -34,6 +34,7 @@ import TextGen (
   , upcase
   , postgen
   , loadVocab
+  , tgempty
   )
 
 type TextGenCh = TextGen StdGen [[Char]]
@@ -132,7 +133,7 @@ disappear :: Vocab -> [ TextGenCh ] -> TextGen StdGen ( TextGenCh, [ TextGenCh ]
 disappear v os = do
   ( mo, os' ) <- remove os
   d <- return $ case mo of
-                (Just o) -> sentence [ word "the", word $ smartjoin o, c v "disappearance" ]
+                (Just o) -> sentence [ word "the", word $ dumbjoin o, c v "disappearance" ]
                 Nothing -> sentence [ word "nothing happened" ]
   return ( d, os', False )
 
@@ -147,7 +148,7 @@ act_trans :: Vocab -> [ TextGenCh ] -> TextGenCh
 act_trans v os = do
   ( o1, o2 ) <- choose os
   v <- choose $ v "verbtrans"
-  list [ the o1, v, the o2 ]
+  sentence [ the o1, v, the o2 ]
 
 -- todo - active/passive
 
@@ -155,7 +156,7 @@ act_intrans :: Vocab -> [ TextGenCh ] -> TextGenCh
 act_intrans v os = do
   o <- choose os
   v <- choose $ v "verbintrans"
-  list [ the o, v ]
+  sentence [ the o, v ]
 
 
 nullevent :: Vocab -> [ TextGenCh ] -> TextGen StdGen ( TextGenCh, [ TextGenCh ], Bool )
@@ -197,7 +198,7 @@ sentence g = postgen (\ws -> [ upcase $ (smartjoin ws ++ " ") ]) $ list g
 -- take the output of a generator and add a newline
                      
 para :: TextGenCh -> TextGenCh
-para g = postgen (++ [ "\n" ]) g
+para g = postgen (++ [ "\n\n" ]) g
 
 
 
@@ -208,7 +209,7 @@ para g = postgen (++ [ "\n" ]) g
 
 formation :: Vocab -> TextGenCh
 formation v = do
-  ( text, os, _) <- event_r v (word "incipit") [] 20
+  ( text, os, _) <- event_r v tgempty [] 2000
   text
 
 
