@@ -9,3 +9,6 @@ pentagon
 lozenge
 rectangle
 hexagon
+oblong
+fibre
+tendril

@@ -23,6 +23,8 @@ import TextGen (
   , word
   , aan
   , choose
+  , choose1
+  , remove
   , weighted
   , list
   , randrep
@@ -58,6 +60,8 @@ c v s = choose $ v s
 al :: [ TextGenCh ] -> TextGenCh
 al = aan . list
 
+the :: TextGenCh -> TextGenCh
+the g = list [ word "the", g ]
 
 -- for the TextGen library:
 -- take a [ TextGenCh ] list some of which will be empty,
@@ -69,10 +73,6 @@ al = aan . list
 -- depends :: Maybe TextGenCh -> TextGenCh
 -- depends (Just g) = g
 -- depends Nothing  = tgempty
-
-
-
-
 
 field :: Vocab -> TextGenCh
 field v = choose [ f1, f2, f3 ]
@@ -99,8 +99,8 @@ border v colour = list [ c v "bordered", colour, c v "border" ]
 -- ( "A blue cube decorated with red stripes",
 --   choose [ "The blue cube", "The cube", "the blue cube with red stripes" ]
 
-object :: Vocab -> TextGen StdGen ( TextGenCh, TextGenCh )
-object v = do
+object2d :: Vocab -> TextGen StdGen ( TextGenCh, TextGenCh )
+object2d v = do
   shape <- choose $ v "shape2d"
   pat <- choose $ v "pattern"
   ( shapec, patc ) <- choose $ v "colour"
@@ -113,45 +113,35 @@ object v = do
     ]
   return ( primary, others )
 
+-- appear: returns an appearance sentence, a primary description and
+-- a secondary description, and a new list of objects
 
--- things which objects can do
--- intransitive
---     appear
---     disappear
---     move
---     transform into other objects
---     multiply
-
--- transitive (to other objects, or fields)
---     consume
---     merge with
---     disappear into
---     obliterate or hide
---     conceal themselves within
-
--- an event is
--- one or several objects, and a field
--- a series of acts between random combos of the objects
---
--- each act is a function from the objects to the new objects
--- not removing them for now
-
--- need a combinator to generate a random number of things
+appear :: Vocab -> [ TextGenCh ] -> TextGen StdGen ( TextGenCh, [ TextGenCh ], Bool )
+appear v os = do
+  ( primary, secondary ) <- object2d v
+  bg <- return $ perhaps ( 1, 2 ) $ list [ c v "preposition", aan $ field v ]
+  appearance <- return $ sentence [ primary, c v "appearance", bg ]
+  os' <- return (os ++ [ secondary ])
+  return ( appearance, os', True )
 
 
-the g = list [ word "the", g ]
+-- disappear - removes one object from the population, returns a sentence
+-- describing how it left, and retuns a new list of objects
+
+disappear :: Vocab -> [ TextGenCh ] -> TextGen StdGen ( TextGenCh, [ TextGenCh ], Bool )
+disappear v os = do
+  ( mo, os' ) <- remove os
+  d <- return $ case mo of
+                (Just o) -> sentence [ word "the", word $ smartjoin o, c v "disappearance" ]
+                Nothing -> sentence [ word "nothing happened" ]
+  return ( d, os', False )
 
 
-objects :: Vocab -> TextGen StdGen [ ( TextGenCh, TextGenCh ) ]
-objects v = do
-  o1 <- object v
-  o2 <- object v
-  o3 <- object v
-  return [ o1, o2, o3 ] 
+act :: Vocab -> [ TextGenCh ] -> TextGen StdGen ( TextGenCh, [ TextGenCh ], Bool )
+act v os = do
+  desc <- return $ choose [ act_trans v os, act_intrans v os ]
+  return ( desc, os, False )
 
-act :: Vocab -> [ ( TextGenCh, TextGenCh ) ] -> TextGenCh  
-act v os = choose [ act_trans v ps, act_intrans v ps ]
-  where ps = map ( \( _, p ) -> p ) os
 
 act_trans :: Vocab -> [ TextGenCh ] -> TextGenCh
 act_trans v os = do
@@ -168,16 +158,41 @@ act_intrans v os = do
   list [ the o, v ]
 
 
-formation :: Vocab -> TextGenCh
-formation v = do
-  os <- objects v
-  a <- return $ sentence $ act v os
-  list [ a, a, a, a, a ]
+nullevent :: Vocab -> [ TextGenCh ] -> TextGen StdGen ( TextGenCh, [ TextGenCh ], Bool )
+nullevent v os = return ( word "----\n", os, True )
 
--- take the output of a generator and sentence-format it
+-- take a list of objects, make a random event from the above. Return
+-- a sentence describing the event, a new list of objects, and a boolean
+-- flag indicating whether to paragraph break
 
-sentence :: TextGenCh -> TextGenCh
-sentence g = postgen (\ws -> [ upcase $ smartjoin ws ]) g
+event :: Vocab -> [ TextGenCh ] -> TextGen StdGen ( TextGenCh, [ TextGenCh ], Bool )
+event v os = do
+  ( sent, os', p ) <- choose1 (nullevent v os) [ appear v os, disappear v os, act v os ]
+  return ( sent, os', p )
+
+
+
+-- recursively generate sentences
+
+event_r :: Vocab -> TextGenCh -> [ TextGenCh ] -> Int -> TextGen StdGen ( TextGenCh, [ TextGenCh ], Bool )
+event_r v body os count = do
+  ( sent, os', p ) <- event v os
+  body' <- return $ list [ body, if p then (para sent) else sent ]
+  case count - 1 < 0 of
+    True -> return ( body', os', p )
+    False -> event_r v body' os' (count - 1) 
+      
+
+
+
+
+
+
+-- takes a list of generators, calls list on them and then
+-- postgens sentence formatting
+
+sentence :: [ TextGenCh ] -> TextGenCh
+sentence g = postgen (\ws -> [ upcase $ (smartjoin ws ++ " ") ]) $ list g
 
 -- take the output of a generator and add a newline
                      
@@ -190,24 +205,23 @@ para g = postgen (++ [ "\n" ]) g
 
 
 
---formation :: Vocab -> TextGenCh
---formation v = field v
 
-  -- list [ fg, c v "juxtaposed", bg ]
-  -- where fg = aan $ list [ c v "colour", c v "shape2d" ]
-  --       bg = field v
+formation :: Vocab -> TextGenCh
+formation v = do
+  ( text, os, _) <- event_r v (word "incipit") [] 20
+  text
 
 
---
+
 
 
 main :: IO ()
 main = do
   args <- getArgs
   v <- loadVocab (getDir args)
-  lines <- replicateM 10 $ do
+  lines <- replicateM 1 $ do
     output <- getStdRandom $ runTextGen $ formation v
     return output
-  putStrLn $ intercalate "\n" $ concat lines
+  putStrLn $ concat $ concat lines
 
 
