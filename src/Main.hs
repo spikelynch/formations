@@ -123,7 +123,7 @@ appear v os = do
   bg <- return $ perhaps ( 1, 2 ) $ list [ c v "preposition", aan $ field v ]
   appearance <- return $ sentence [ primary, c v "appearance", bg ]
   os' <- return (os ++ [ secondary ])
-  return ( appearance, os', True )
+  return ( appearance, os', False )
 
 
 -- disappear - removes one object from the population, returns a sentence
@@ -135,13 +135,16 @@ disappear v os = do
   d <- return $ case mo of
                 (Just o) -> sentence [ word "the", word $ dumbjoin o, c v "disappearance" ]
                 Nothing -> sentence [ word "nothing happened" ]
-  return ( d, os', False )
+  return ( d, os', True )
 
 
 act :: Vocab -> [ TextGenCh ] -> TextGen StdGen ( TextGenCh, [ TextGenCh ], Bool )
-act v os = do
-  desc <- return $ choose [ act_trans v os, act_intrans v os ]
-  return ( desc, os, False )
+act v os = case os of
+  []        -> nullevent v os
+  (a:[])    -> return ( act_intrans v os, os, False )
+  otherwise -> do
+    desc <- return $ choose [ act_trans v os, act_intrans v os ]
+    return ( desc, os, False )
 
 
 act_trans :: Vocab -> [ TextGenCh ] -> TextGenCh
@@ -167,9 +170,9 @@ nullevent v os = return ( word "----\n", os, True )
 -- flag indicating whether to paragraph break
 
 event :: Vocab -> [ TextGenCh ] -> TextGen StdGen ( TextGenCh, [ TextGenCh ], Bool )
-event v os = do
-  ( sent, os', p ) <- choose1 (nullevent v os) [ appear v os, disappear v os, act v os ]
-  return ( sent, os', p )
+event v os = case os of
+               [] -> appear v os   -- chapter opening
+               _  -> choose1 (nullevent v os) [ appear v os, disappear v os, act v os, act v os, act v os, act v os ]
 
 
 
