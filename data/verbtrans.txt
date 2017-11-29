@@ -1,14 +1,12 @@
-consumes
-obscures
-divides
-collides with
-passes over
-passes under
-devours
-outgrows
-outshines
-moistens
-grapples with
-fights against
-struggles with
-engulfs
+consume
+obscure
+divide
+pass
+pass
+devour
+outgrow
+outshine
+engulf
+fight
+repel
+attract
