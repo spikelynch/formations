@@ -12,3 +12,9 @@ hexagon
 oblong
 fibre
 tendril
+blob
+chevron
+kite
+diamond
+rhombus
+parallelogram

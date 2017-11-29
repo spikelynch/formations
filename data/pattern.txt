@@ -6,8 +6,9 @@ ripples
 moire
 stripes
 pinstripes
-grid
+grids
 squares
 diamonds
 lozenges
 woodgrain
+cirles
