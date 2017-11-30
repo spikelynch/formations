@@ -99,20 +99,22 @@ tgbfalse :: TextGenBool
 tgbfalse = return False
 
 
-object :: Vocab -> TextGen StdGen ( TextGenCh, TextGenCh )
+object :: Vocab -> TextGen StdGen ( TextGenCh, TextGenCh, Bool )
 object v = do
   plural <- choose1 tgbfalse [ tgbtrue, tgbfalse ] 
   shape <- choose $ v ( if plural then "shapes" else "shape" )
   pat <- choose $ v "pattern"
   ( shapec, patc ) <- choose $ v "colour"
   patwith <- return $ list [ c v "patterned", patc, pat ]
-  primary <- return $ list [ shapec, shape, patwith ]
+  primary <- return $ case plural of
+    True -> list [ c v "some", shapec, shape, patwith ]
+    False -> list [ aan shapec, shape, patwith ] 
   secondary <- return $ weighted [
     ( 25, word (if plural then "they" else "it") ),
     ( 40, the shape ),
     ( 50, the $ list [ shapec, shape ] )
     ]
-  return ( primary, secondary )
+  return ( primary, secondary, plural )
 
 
 
@@ -128,9 +130,9 @@ object v = do
 
 appear :: Vocab -> [ TextGenCh ] -> TextGen StdGen ( TextGenCh, [ TextGenCh ] )
 appear v os = do
-  ( primary, secondary ) <- object v
+  ( primary, secondary, plural ) <- object v
   bg <- return $ perhaps ( 1, 2 ) $ list [ c v "preposition", aan $ field v ]
-  appearance <- return $ sentence [ primary, c v "appearance", bg ]
+  appearance <- return $ sentence [ primary, binflect plural (c v "appearance"), bg ]
   os' <- return (os ++ [ secondary ])
   return ( appearance, os' )
 
@@ -148,7 +150,7 @@ disappear :: Vocab -> [ TextGenCh ] -> TextGen StdGen ( TextGenCh, [ TextGenCh ]
 disappear v os = do
   ( mo, os' ) <- remove os
   d <- return $ case mo of
-                (Just o) -> sentence [ word $ dumbjoin o, c v "disappearance" ]
+                (Just o) -> sentence [ inflect (word $ dumbjoin o) (c v "disappearance") ]
                 Nothing -> sentence [ word "nothing happened" ]
   return ( d, os' )
 
@@ -159,15 +161,15 @@ disappear v os = do
 extend :: Vocab -> [ TextGenCh ] -> TextGen StdGen ( TextGenCh, [ TextGenCh ] )
 extend v os = do
   o <- choose os
-  ( primary, secondary ) <- object v
+  ( primary, secondary, plural ) <- object v
   os' <- return (os ++ [ secondary ] )
-  return ( extension v o primary, os' )
+  return ( extension v o primary plural, os' )
 
 
--- plurals
+-- plurals -- this is wrong
 
-extension :: Vocab -> TextGenCh -> TextGenCh -> TextGenCh
-extension v o no = sentence [ word "From", o, c v "extends", no ]
+extension :: Vocab -> TextGenCh -> TextGenCh -> Bool -> TextGenCh 
+extension v o no pl = sentence [ word "From", o, binflect pl (c v "growth"), no ]
 
 
 
@@ -184,14 +186,18 @@ act v os = case os of
 act_trans :: Vocab -> [ TextGenCh ] -> TextGenCh
 act_trans v os = do
   ( o1, o2 ) <- choose os
-  sentence [ inflect o1 (c v "verbtrans"), o2 ]
+  sentence [ inflect o1 (c v "action_trans"), accusative o2 ]
+
+accusative :: TextGenCh -> TextGenCh
+accusative g = postgen (\w -> if w == [ "they" ] then [ "them" ]  else w) g
+
 
 -- todo - active/passive
 
 act_intrans :: Vocab -> [ TextGenCh ] -> TextGenCh
 act_intrans v os = do
   o <- choose os
-  sentence [ inflect o (c v "verbintrans") ]
+  sentence [ inflect o (c v "action_intrans") ]
 
 
 -- dumb-ass inflection: if the noun doesn't end in s, append s to the
@@ -203,10 +209,12 @@ inflect noun verb = postgen inflect_l $ list [ noun, verb ]
           True -> ws
           False -> pluralverb ws
 
+
 ispluralphrase :: [[ Char ]] -> Bool
-ispluralphrase ws = case secondlast ws of
-  Nothing  -> False
-  (Just w) -> ispluralnoun w
+ispluralphrase ("they":ws) = True
+ispluralphrase ws          = case secondlast ws of
+                               Nothing  -> False
+                               (Just w) -> ispluralnoun w
           
 secondlast :: [ [ Char ] ] -> Maybe [ Char ]
 secondlast ws = secondfirst $ reverse ws
@@ -217,6 +225,12 @@ ispluralnoun :: [ Char ] -> Bool
 ispluralnoun w = isplural $ reverse w
   where isplural (x:xs) = (x == 's')
         isplural _      = False
+
+-- For where the sentence structure doesn't fit inflect
+
+binflect :: Bool -> TextGenCh -> TextGenCh
+binflect False verb = postgen (\ws -> pluralverb ws) verb
+binflect True  verb = verb
 
 
 pluralverb :: [[ Char ]] -> [[ Char ]]
@@ -261,7 +275,7 @@ event v os = case os of
 event_r :: Vocab -> TextGenCh -> [ TextGenCh ] -> Int -> TextGen StdGen ( TextGenCh, [ TextGenCh ] )
 event_r v body os count = do
   ( sent, os' ) <- event v os
-  pbreak <- return $ choose [ word "\n\n", tgempty ]
+  pbreak <- return $ weighted [ (10, word "\n\n"), (24, tgempty) ]
   body' <- return $ list [ body, sent, pbreak ]
   case count - 1 < 0 of
     True -> return ( body', os' )
@@ -291,17 +305,17 @@ para g = postgen (++ [ "\n\n" ]) g
 
 
 
-formation :: Vocab -> TextGenCh
-formation v = do
-  ( text, os ) <- event_r v tgempty [] 200
+formations :: Vocab -> TextGenCh
+formations v = do
+  ( text, os ) <- event_r v tgempty [] 1000
   text
 
 
-sshape = choose $ map word [ "triangle", "square", "rhombuses", "spheres" ]
+sshape = choose $ map word [ "they", "triangle","rhombuses", "it", "they" ]
 
 test_inflect :: Vocab -> TextGenCh
-test_inflect v = list [ s1, s1, s1, s1, s1 ]
-  where s1 = sentence [ inflect sshape (c v "verbintrans") ]
+test_inflect v = list [ s1, s1, s1, s1, s1, s1, s1, s1, s1, s1 ]
+  where s1 = sentence [ inflect sshape (c v "action_intrans") ]
 
 
 main :: IO ()
@@ -309,7 +323,7 @@ main = do
   args <- getArgs
   v <- loadVocab (getDir args)
   lines <- replicateM 1 $ do
-    output <- getStdRandom $ runTextGen $ formation v
+    output <- getStdRandom $ runTextGen $ formations v
     return output
   putStrLn $ concat $ concat lines
 
