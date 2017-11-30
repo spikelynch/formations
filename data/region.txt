@@ -6,3 +6,5 @@ cloud
 haze
 sky
 fog
+space
+locus

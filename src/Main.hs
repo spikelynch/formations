@@ -44,14 +44,15 @@ type TextGenBool = TextGen StdGen Bool
 getDir (x:xs) = x
 getDir _      = "./"
 
-default_max_length :: Int
-default_max_length = 280
 
-maxLength :: [ String ] -> Int
-maxLength (a:b:cs) = case readMaybe b of
+default_length :: Int
+default_length = 1000
+
+getLength :: [ String ] -> Int
+getLength (a:b:cs) = case readMaybe b of
   (Just i) -> i
-  Nothing  -> default_max_length
-maxLength _        = default_max_length
+  Nothing  -> default_length
+getLength _        = default_length
 
 c :: Vocab -> String -> TextGenCh
 c v s = choose $ v s
@@ -131,8 +132,11 @@ object v = do
 appear :: Vocab -> [ TextGenCh ] -> TextGen StdGen ( TextGenCh, [ TextGenCh ] )
 appear v os = do
   ( primary, secondary, plural ) <- object v
+  cht <- return $ case os of
+    [] -> chtitle secondary
+    otherwise -> perhaps ( 1, 10 ) $ chtitle secondary
   bg <- return $ perhaps ( 1, 2 ) $ list [ c v "preposition", aan $ field v ]
-  appearance <- return $ sentence [ primary, binflect plural (c v "appearance"), bg ]
+  appearance <- return $ list [ cht, sentence [ primary, binflect plural (c v "appearance"), bg ] ]
   os' <- return (os ++ [ secondary ])
   return ( appearance, os' )
 
@@ -140,7 +144,8 @@ appear v os = do
 chapter :: Vocab -> TextGen StdGen ( TextGenCh, [ TextGenCh ] )
 chapter v = do
   ( appearance, os ) <- appear v []
-  return ( list [ para $ sentence [ word "\n-------\n" ], appearance ], os ) 
+  o <- return $ head os
+  return ( chtitle o, os ) 
 
 
 -- disappear - removes one object from the population, returns a sentence
@@ -152,7 +157,7 @@ disappear v os = do
   d <- return $ case mo of
                 (Just o) -> sentence [ inflect (word $ dumbjoin o) (c v "disappearance") ]
                 Nothing -> sentence [ word "nothing happened" ]
-  return ( d, os' )
+  return ( pp 30 d, os' )
 
 
 
@@ -163,14 +168,15 @@ extend v os = do
   o <- choose os
   ( primary, secondary, plural ) <- object v
   os' <- return (os ++ [ secondary ] )
-  return ( extension v o primary plural, os' )
+  return ( pp 10 (extension v o primary plural), os' )
 
 
--- plurals -- this is wrong
+
 
 extension :: Vocab -> TextGenCh -> TextGenCh -> Bool -> TextGenCh 
-extension v o no pl = sentence [ word "From", o, binflect pl (c v "growth"), no ]
-
+extension v o no pl = choose [ e1, e2 ]
+  where e1 = sentence [ word "From", accusative o, binflect pl (c v "growth"), no ]
+        e2 = sentence [ inflect o (c v "produce"), no ]
 
 
 -- interactions
@@ -186,7 +192,7 @@ act v os = case os of
 act_trans :: Vocab -> [ TextGenCh ] -> TextGenCh
 act_trans v os = do
   ( o1, o2 ) <- choose os
-  sentence [ inflect o1 (c v "action_trans"), accusative o2 ]
+  pp 15 $ sentence [ inflect o1 (c v "action_trans"), accusative o2 ]
 
 accusative :: TextGenCh -> TextGenCh
 accusative g = postgen (\w -> if w == [ "they" ] then [ "them" ]  else w) g
@@ -197,7 +203,7 @@ accusative g = postgen (\w -> if w == [ "they" ] then [ "them" ]  else w) g
 act_intrans :: Vocab -> [ TextGenCh ] -> TextGenCh
 act_intrans v os = do
   o <- choose os
-  sentence [ inflect o (c v "action_intrans") ]
+  pp 15 $ sentence [ inflect o (c v "action_intrans") ]
 
 
 -- dumb-ass inflection: if the noun doesn't end in s, append s to the
@@ -264,7 +270,10 @@ event v os = case os of
                _  -> choose1 (nullevent v os) [
                  appear v os
                  , disappear v os
+                 , disappear v os
                  , act v os
+                 , act v os
+                 , extend v os
                  , extend v os
                  ]
 
@@ -275,8 +284,7 @@ event v os = case os of
 event_r :: Vocab -> TextGenCh -> [ TextGenCh ] -> Int -> TextGen StdGen ( TextGenCh, [ TextGenCh ] )
 event_r v body os count = do
   ( sent, os' ) <- event v os
-  pbreak <- return $ weighted [ (10, word "\n\n"), (24, tgempty) ]
-  body' <- return $ list [ body, sent, pbreak ]
+  body' <- return $ list [ body, sent ]
   case count - 1 < 0 of
     True -> return ( body', os' )
     False -> event_r v body' os' (count - 1) 
@@ -293,21 +301,30 @@ event_r v body os count = do
 sentence :: [ TextGenCh ] -> TextGenCh
 sentence g = postgen (\ws -> [ upcase $ (smartjoin ws ++ " ") ]) $ list g
 
+-- chapter title
+-- This disappears if the title is "It" or "They"
+
+chtitle :: TextGenCh -> TextGenCh
+chtitle g = postgen cht g
+  where cht ("it":ws)   = []
+        cht ("they":ws) = []
+        cht ws          =  [ "\n\n## " ++ (upcase $ dumbjoin ws) ++ "\n\n"]
+
+        
 -- take the output of a generator and add a newline
                      
 para :: TextGenCh -> TextGenCh
 para g = postgen (++ [ "\n\n" ]) g
 
+pp :: Int -> TextGenCh -> TextGenCh
+pp p g = weighted [ ( p, para g), (100 - p, g) ]
 
 
 
 
-
-
-
-formations :: Vocab -> TextGenCh
-formations v = do
-  ( text, os ) <- event_r v tgempty [] 1000
+formations :: Vocab -> Int -> TextGenCh
+formations v c = do
+  ( text, os ) <- event_r v tgempty [] c
   text
 
 
@@ -322,8 +339,9 @@ main :: IO ()
 main = do
   args <- getArgs
   v <- loadVocab (getDir args)
+  l <- return $ getLength args
   lines <- replicateM 1 $ do
-    output <- getStdRandom $ runTextGen $ formations v
+    output <- getStdRandom $ runTextGen $ formations v l
     return output
   putStrLn $ concat $ concat lines
 

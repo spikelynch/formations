@@ -1,5 +1,9 @@
 appear
 emerge
-manifest
 grow
 emanate
+come
+approach
+descend
+ascend
+arrive
