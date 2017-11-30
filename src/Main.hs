@@ -39,6 +39,8 @@ import TextGen (
 
 type TextGenCh = TextGen StdGen [[Char]]
 
+type TextGenBool = TextGen StdGen Bool
+
 getDir (x:xs) = x
 getDir _      = "./"
 
@@ -90,22 +92,30 @@ border v colour = list [ c v "bordered", colour, c v "border" ]
 -- ( "A blue cube decorated with red stripes",
 --   choose [ "The blue cube", "The cube", "the blue cube with red stripes" ]
 
-data Object = Object TextGenCh Bool
+tgbtrue :: TextGenBool
+tgbtrue = return True
+
+tgbfalse :: TextGenBool
+tgbfalse = return False
+
 
 object :: Vocab -> TextGen StdGen ( TextGenCh, TextGenCh )
 object v = do
-  shape <- choose $ v "shape"
+  plural <- choose1 tgbfalse [ tgbtrue, tgbfalse ] 
+  shape <- choose $ v ( if plural then "shapes" else "shape" )
   pat <- choose $ v "pattern"
   ( shapec, patc ) <- choose $ v "colour"
   patwith <- return $ list [ c v "patterned", patc, pat ]
-  primary <- return $ aan $ list [ shapec, shape, patwith  ]
-  others <- return $ weighted [
-    ( 25, word "it" ),
+  primary <- return $ list [ shapec, shape, patwith ]
+  secondary <- return $ weighted [
+    ( 25, word (if plural then "they" else "it") ),
     ( 40, the shape ),
     ( 50, the $ list [ shapec, shape ] )
---    ( 10, the $ list [ shapec, shape, patwith ] )
     ]
-  return ( primary, others )
+  return ( primary, secondary )
+
+
+
 
 -- TODO: substructures growing from or on other structures
 -- plural structures
